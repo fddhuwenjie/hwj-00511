@@ -709,6 +709,138 @@ fields:
   console.log('');
 
   // ================================================================
+  // Test 18: 反向测试 - 数值列与日期列并存时不产生日期比较建议
+  // ================================================================
+  console.log('Test 18: 反向测试 - 数值列不应被误判为日期列参与跨字段比较');
+
+  const tmpDir18 = makeTempDir();
+  const auditCsv18 = path.join(tmpDir18, 'mixed.csv');
+  const auditRules18 = path.join(tmpDir18, 'mixed.rules.yaml');
+
+  const csvLines18 = ['id,created_at,updated_at,price,quantity,total_amount,score,remark'];
+  for (let i = 1; i <= 30; i++) {
+    const y = 2023;
+    const m = ((i - 1) % 12) + 1;
+    const d = ((i * 2) % 27) + 1;
+    const dt1 = i % 3 === 0 ? `${y}年${m}月${d}日` : `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dt2 = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(d + 5, 28)).padStart(2, '0')}`;
+    const price = 100 + i * 7;
+    const qty = (i % 5) + 1;
+    csvLines18.push(`R${String(i).padStart(3, '0')},${dt1},${dt2},${price},${qty},${price * qty},${i * 3},备注${i}`);
+  }
+  fs.writeFileSync(auditCsv18, csvLines18.join('\n'), 'utf-8');
+
+  fs.writeFileSync(auditRules18, `
+fields:
+  id:
+    required: true
+    type: string
+    pattern: '^R\\d{3}$'
+  price:
+    required: true
+    type: number
+  quantity:
+    required: true
+    type: integer
+  total_amount:
+    required: true
+    type: number
+  score:
+    required: true
+    type: integer
+`, 'utf-8');
+
+  const auditor18 = new RuleAuditor(auditCsv18, auditRules18);
+  const report18 = await auditor18.audit();
+  const rules18 = auditor18.ruleEngine.rules;
+
+  assert(auditor18._isLikelyDateField('created_at', rules18) === true, 'created_at 被识别为日期字段');
+  assert(auditor18._isLikelyDateField('updated_at', rules18) === true, 'updated_at 被识别为日期字段');
+  assert(auditor18._isLikelyDateField('price', rules18) === false, 'price 不被识别为日期字段（规则配置 type: number）');
+  assert(auditor18._isLikelyDateField('quantity', rules18) === false, 'quantity 不被识别为日期字段（规则配置 type: integer）');
+  assert(auditor18._isLikelyDateField('total_amount', rules18) === false, 'total_amount 不被识别为日期字段（规则配置 type: number）');
+  assert(auditor18._isLikelyDateField('score', rules18) === false, 'score 不被识别为日期字段（规则配置 type: integer）');
+
+  const cfSuggestions18 = report18.suggestions.filter(s => s.category === 'cross_field_suggestion');
+  const dateCompareSuggestions = cfSuggestions18.filter(s =>
+    s.yamlSnippet && s.yamlSnippet.includes('compare') && s.yamlSnippet.includes('date')
+  );
+
+  assert(dateCompareSuggestions.length === 1, '只生成1条日期比较建议(created_at<=updated_at)，实际=' + dateCompareSuggestions.length);
+
+  const datePair18 = dateCompareSuggestions[0];
+  assert(datePair18 !== undefined, '存在 created_at<=updated_at 的日期比较建议');
+  assert(
+    datePair18.yamlSnippet.includes('created_at') && datePair18.yamlSnippet.includes('updated_at'),
+    '日期比较建议只涉及 created_at 和 updated_at'
+  );
+
+  const wrongDateSuggestions = cfSuggestions18.filter(s =>
+    s.yamlSnippet && s.yamlSnippet.includes('compare') &&
+    s.yamlSnippet.includes('date') &&
+    (s.yamlSnippet.includes('price') || s.yamlSnippet.includes('quantity') ||
+     s.yamlSnippet.includes('total_amount') || s.yamlSnippet.includes('score'))
+  );
+  assert(wrongDateSuggestions.length === 0, '不生成数值列与日期列的日期比较建议，实际错误建议数=' + wrongDateSuggestions.length);
+
+  for (const ws of wrongDateSuggestions) {
+    console.log('  [错误建议] ' + ws.id + ': ' + ws.description);
+  }
+
+  console.log('');
+
+  // ================================================================
+  // Test 19: 反向测试 - 纯时间戳日期字段不被误过滤
+  // ================================================================
+  console.log('Test 19: 反向测试 - 纯时间戳日期字段应被正确识别');
+
+  const tmpDir19 = makeTempDir();
+  const tsCsv19 = path.join(tmpDir19, 'timestamps.csv');
+  const tsLines19 = ['id,login_ts,logout_ts,score'];
+  for (let i = 1; i <= 20; i++) {
+    const login = 1682995200 + i * 86400;
+    const logout = login + 3600;
+    tsLines19.push(`T${String(i).padStart(3, '0')},${login},${logout},${i * 10}`);
+  }
+  fs.writeFileSync(tsCsv19, tsLines19.join('\n'), 'utf-8');
+
+  const tsRules19 = path.join(tmpDir19, 'ts.rules.yaml');
+  fs.writeFileSync(tsRules19, `
+fields:
+  id:
+    required: true
+    type: string
+  score:
+    required: true
+    type: integer
+`, 'utf-8');
+
+  const auditor19 = new RuleAuditor(tsCsv19, tsRules19);
+  const report19 = await auditor19.audit();
+  const rules19 = auditor19.ruleEngine.rules;
+
+  assert(auditor19._isLikelyDateField('login_ts', rules19) === true, 'login_ts 被识别为日期字段（纯10位时间戳）');
+  assert(auditor19._isLikelyDateField('logout_ts', rules19) === true, 'logout_ts 被识别为日期字段（纯10位时间戳）');
+  assert(auditor19._isLikelyDateField('score', rules19) === false, 'score 不被识别为日期字段（小整数）');
+
+  const tsDatePairSuggestions = report19.suggestions.filter(s =>
+    s.category === 'cross_field_suggestion' &&
+    s.yamlSnippet && s.yamlSnippet.includes('compare') &&
+    s.yamlSnippet.includes('login_ts') && s.yamlSnippet.includes('logout_ts')
+  );
+  assert(tsDatePairSuggestions.length >= 1, '检测到 login_ts<=logout_ts 的时间戳日期对建议');
+
+  const tsWrongSuggestions = report19.suggestions.filter(s =>
+    s.category === 'cross_field_suggestion' &&
+    s.yamlSnippet && s.yamlSnippet.includes('compare') &&
+    s.yamlSnippet.includes('date') &&
+    s.yamlSnippet.includes('score')
+  );
+  assert(tsWrongSuggestions.length === 0, '不生成 score 与时间戳列的日期比较建议');
+
+  console.log('');
+
+  // ================================================================
   // 结果汇总
   // ================================================================
   console.log('========================================');

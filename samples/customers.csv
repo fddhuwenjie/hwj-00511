@@ -1,0 +1,22 @@
+customer_id,name,email,phone,gender,age,register_date,status,city
+C001, 张三 ,zhangsan@example.com,13800138000,Male,28,2023-01-15,active,北京
+C002,  李四  ,lisi@,13900139000,男,35,2023/02/20,Active,上海
+C003,王五,,13700137000,F,42,2023.03.10,inactive, 广州
+C004,赵六,zhaoliu@example.com,13600136000,male,null,2022-12-05,active,深圳
+C001, 张三 ,zhangsan@example.com,13800138000,Male,28,2023-01-15,active,北京
+C005,钱七,qianqi@example.com,13500135000,Female,199,2023年4月18日,ACTIVE,杭州
+C006,孙八,sunba@example.com,13400134000,,25,2023-05-22,active,南京
+C007,周九,zhoujiu@example.com,13300133000,M,30,1682995200,active,成都
+C008,吴十,invalid-email,13200132000,男,22,2023-07-30,act,武汉
+C009,郑十一,zheng11@example.com,13100131000,Male,45,2023-08-15,pending,西安
+C010,王十二,wang12@example.com,13000130000,Female,abc,2023-09-20,active,重庆
+C011,"冯
+十三",feng13@example.com,12900129000,男,33,2023-10-05,active,天津
+C012, null ,chen14@example.com,12800128000,Male,29,2023-11-12,active,苏州
+C013,褚十五,chu15@example.com,12700127000,F,38,2023-12-01,active,宁波
+C014,卫十六,wei16@example.com,12600126000,male,41,2024-01-15,active,青岛
+C003,王五,wangwu@example.com,13700137000,F,42,2023.03.10,inactive,广州
+C015,蒋十七,jiang17@example.com,12500125000,男,27,2024-02-20,unknown,大连
+C016,沈十八,shen18@example.com,,Female,36,2024-03-10,active,厦门
+C017,韩十九,han19@example.com,12300123000,Male,0,2024-04-05,active,济南
+C018,杨二十,yang20@example.com,12200122000,F,55,2024-05-18,active,哈尔滨

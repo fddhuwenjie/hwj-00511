@@ -1,0 +1,22 @@
+order_id,customer_id,product_id,product_name,quantity,unit_price,total_amount,order_date,delivery_date,status,payment_method
+ORD001,C001,P001, 华为手机 ,2,3999.00,7998,2023-06-15,2023-06-18,completed,alipay
+ORD002,C002,P002,苹果电脑,1, 8999 ,8999,2023/06/16,2023/06/20,Completed,wechat
+ORD003,C003,P003,小米耳机,5,299,1495,2023.06.17,,shipped,alipay
+ORD004,C004,P001,华为手机,3,3999.00,11997,2023-06-18,2023-06-15,completed,wechat
+ORD001,C001,P001, 华为手机 ,2,3999.00,7998,2023-06-15,2023-06-18,completed,alipay
+ORD005,C005,P004,OPPO平板,1,1999.00,null,2023年6月19日,2023-06-22,pending,alipay
+ORD006,C006,P005,VIVO手表,-2,599.00,-1198,2023-06-20,2023-06-23,completed,wechat
+ORD007,C007,P002,苹果电脑,1,8999.00,8999,1687267200,1687526400,processing,bank_transfer
+ORD008,C008,P003,小米耳机,10,299.00,2990,2023-06-22,2023-06-25,unknown,alipay
+ORD009,C009,P006,联想笔记本,1,5999,5999,2023-06-23,2023-06-26,completed,
+ORD010,C010,P007,戴尔显示器,2,1299.00,3000,2023-06-24,2023-06-27,completed,wechat
+ORD011,C001,P008,"罗技
+无线鼠标",5,199,995,2023-06-25,2023-06-28,processing,alipay
+ORD012,C011,P001,华为手机,0,3999.00,0,2023-06-26,2023-06-29,cancelled,wechat
+ORD013,C012,P009,三星电视,1,4999.00,4999,2023-06-27,2023-06-30,completed,alipay
+ORD014,C013,P010,索尼相机,abc,6999.00,6999,2023-06-28,2023-07-01,shipped,wechat
+ORD015,C014,P002,苹果电脑,1,99999.00,99999,2023-06-29,2023-07-02,completed,bank_transfer
+ORD003,C003,P003,小米耳机,5,299,1495,2023.06.17,,shipped,alipay
+ORD016,C015,P004,OPPO平板,3,1999.00,5997,2023-06-30,2023-07-03,completed,alipay
+ORD017,C016,P005,VIVO手表,2,599.00,1198,2023-07-01,2023-07-04,pending,WeChat
+ORD018,,P006,联想笔记本,1,5999,5999,2023-07-02,2023-07-05,completed,alipay

@@ -1,0 +1,127 @@
+global:
+  uniqueKeys:
+    - order_id
+
+fields:
+  order_id:
+    required: true
+    type: string
+    pattern: '^ORD\d{3}$'
+    case: upper
+    trim: true
+
+  customer_id:
+    required: true
+    type: string
+    pattern: '^C\d{3}$'
+    case: upper
+    trim: true
+
+  product_id:
+    required: true
+    type: string
+    pattern: '^P\d{3}$'
+    case: upper
+    trim: true
+
+  product_name:
+    required: true
+    type: string
+    trim: true
+
+  quantity:
+    required: true
+    type: integer
+    range:
+      min: 1
+      max: 1000
+
+  unit_price:
+    required: true
+    type: number
+    range:
+      min: 0
+      max: 100000
+    trim: true
+
+  total_amount:
+    required: true
+    type: number
+    range:
+      min: 0
+      max: 10000000
+    fillValue: 0
+
+  order_date:
+    required: true
+    type: date
+    dateFormat: 'YYYY-MM-DD'
+
+  delivery_date:
+    required: false
+    type: date
+    dateFormat: 'YYYY-MM-DD'
+
+  status:
+    required: true
+    type: enum
+    enum:
+      - pending
+      - processing
+      - shipped
+      - completed
+      - cancelled
+      - returned
+    enumMap:
+      pending: pending
+      Pending: pending
+      PENDING: pending
+      processing: processing
+      Processing: processing
+      shipped: shipped
+      Shipped: shipped
+      completed: completed
+      Completed: completed
+      COMPLETED: completed
+      cancelled: cancelled
+      Cancelled: cancelled
+      returned: returned
+      Returned: returned
+    case: lower
+
+  payment_method:
+    required: false
+    type: enum
+    enum:
+      - alipay
+      - wechat
+      - bank_transfer
+      - cash
+      - credit_card
+    enumMap:
+      alipay: alipay
+      Alipay: alipay
+      wechat: wechat
+      Wechat: wechat
+      WeChat: wechat
+      bank_transfer: bank_transfer
+      BankTransfer: bank_transfer
+      cash: cash
+      Cash: cash
+      credit_card: credit_card
+      CreditCard: credit_card
+    case: lower
+    fillValue: ''
+
+crossField:
+  - type: compare
+    left: delivery_date
+    operator: '>='
+    right: order_date
+    dataType: date
+    description: 发货日期应晚于或等于下单日期
+
+  - type: expression
+    expression: "parseFloat(row.total_amount) === parseFloat(row.quantity) * parseFloat(row.unit_price) || row.total_amount === '' || row.total_amount === '0'"
+    description: 总金额应等于数量乘以单价
+    severity: warning

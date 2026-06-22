@@ -1,0 +1,115 @@
+global:
+  uniqueKeys:
+    - sku_id
+    - warehouse
+
+fields:
+  sku_id:
+    required: true
+    type: string
+    pattern: '^SKU\d{3}$'
+    case: upper
+    trim: true
+
+  product_name:
+    required: true
+    type: string
+    trim: true
+    minLength: 2
+
+  category:
+    required: true
+    type: enum
+    enum:
+      - 手机
+      - 笔记本电脑
+      - 平板
+      - 鼠标
+      - 键盘
+      - 耳机
+      - 显示器
+      - 相机
+      - 无人机
+      - 游戏机
+      - 手表
+      - 智能穿戴
+    trim: true
+    fillValue: '其他'
+
+  warehouse:
+    required: true
+    type: enum
+    enum:
+      - 北京仓
+      - 上海仓
+      - 广州仓
+      - 深圳仓
+      - 成都仓
+      - 杭州仓
+    trim: true
+
+  quantity:
+    required: true
+    type: integer
+    range:
+      min: 0
+      max: 100000
+    fillValue: 0
+
+  min_stock:
+    required: true
+    type: integer
+    range:
+      min: 0
+      max: 10000
+    fillValue: 0
+
+  max_stock:
+    required: true
+    type: integer
+    range:
+      min: 0
+      max: 1000000
+    fillValue: 0
+
+  unit_cost:
+    required: true
+    type: number
+    range:
+      min: 0
+      max: 1000000
+    trim: true
+
+  supplier:
+    required: true
+    type: string
+    trim: true
+
+  last_updated:
+    required: true
+    type: date
+    dateFormat: 'YYYY-MM-DD'
+
+crossField:
+  - type: compare
+    left: quantity
+    operator: '>='
+    right: min_stock
+    dataType: number
+    description: 库存数量应大于等于最小库存
+    severity: warning
+
+  - type: compare
+    left: quantity
+    operator: '<='
+    right: max_stock
+    dataType: number
+    description: 库存数量应小于等于最大库存
+    severity: warning
+
+  - type: compare
+    left: min_stock
+    operator: '<='
+    right: max_stock
+    dataType: number
+    description: 最小库存应小于等于最大库存

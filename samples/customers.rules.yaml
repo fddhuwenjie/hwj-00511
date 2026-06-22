@@ -1,0 +1,93 @@
+global:
+  uniqueKeys:
+    - customer_id
+
+fields:
+  customer_id:
+    required: true
+    type: string
+    pattern: '^C\d{3}$'
+    case: upper
+    trim: true
+
+  name:
+    required: true
+    type: string
+    trim: true
+    minLength: 2
+    maxLength: 50
+
+  email:
+    required: true
+    type: email
+    trim: true
+    case: lower
+
+  phone:
+    required: true
+    type: string
+    pattern: '^1\d{10}$'
+    trim: true
+
+  gender:
+    required: false
+    type: enum
+    enum:
+      - M
+      - F
+    enumMap:
+      Male: M
+      male: M
+      M: M
+      男: M
+      Female: F
+      female: F
+      F: F
+      女: F
+    fillValue: ''
+
+  age:
+    required: false
+    type: integer
+    range:
+      min: 16
+      max: 120
+    fillValue: 0
+
+  register_date:
+    required: true
+    type: date
+    dateFormat: 'YYYY-MM-DD'
+
+  status:
+    required: true
+    type: enum
+    enum:
+      - active
+      - inactive
+      - pending
+      - cancelled
+    enumMap:
+      active: active
+      Active: active
+      ACTIVE: active
+      inactive: inactive
+      Inactive: inactive
+      pending: pending
+      Pending: pending
+      cancelled: cancelled
+      Cancelled: cancelled
+    case: lower
+
+  city:
+    required: false
+    type: string
+    trim: true
+
+crossField:
+  - type: compare
+    left: register_date
+    operator: '<='
+    right: register_date
+    dataType: date
+    description: 注册日期应为有效日期

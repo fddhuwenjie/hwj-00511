@@ -1,10 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const yaml = require('yaml');
 const RuleEngine = require('./lib/ruleEngine');
 const CSVReader = require('./lib/csvReader');
 const { QualityChecker } = require('./lib/qualityChecker');
 const DataCleaner = require('./lib/dataCleaner');
+const RuleAuditor = require('./lib/ruleAuditor');
 
 let passed = 0;
 let failed = 0;
@@ -458,6 +460,251 @@ crossField:
   });
   assert(ordCfDateOk, 'orders中跨字段日期比较（含中文日期/时间戳/ISO/斜杠/点号）全部能正常解析，无"日期解析失败"告警');
   assertEq(ordTypeDateErr, 0, 'orders中日期字段（含各种格式）全部通过type=date检测');
+
+  console.log('');
+
+  // ================================================================
+  // Test 10: 规则审计 - 覆盖率 & 未约束字段检测
+  // ================================================================
+  console.log('Test 10: 规则审计 - 覆盖率与未约束字段检测');
+
+  const tmpDir10 = makeTempDir();
+  const auditCsv10 = path.join(tmpDir10, 'audit.csv');
+  const auditRules10 = path.join(tmpDir10, 'audit.rules.yaml');
+
+  const csvLines = ['id,name,category,created_at,updated_at,price,quantity,total,status,remark'];
+  const categories = ['电子产品', '图书', '服装'];
+  const statuses = ['active', 'active', 'active', 'active', 'inactive', 'pending'];
+  let idx = 1;
+  for (let batch = 0; batch < 30; batch++) {
+    for (let ci = 0; ci < 3; ci++) {
+      const id = 'R' + String(idx).padStart(3, '0');
+      const cat = categories[ci];
+      const y = 2023 + Math.floor(idx / 12);
+      const m = ((idx - 1) % 12) + 1;
+      const d = ((idx * 3) % 27) + 1;
+      const price = (10 + idx * 7) % 500 + 10;
+      const qty = (idx % 5) + 1;
+      const status = statuses[idx % statuses.length];
+      const sep1 = idx % 3 === 0 ? '-' : idx % 3 === 1 ? '/' : '.';
+      const sep2 = idx % 4 === 0 ? '年' : '-';
+      let dt1, dt2;
+      if (idx % 5 === 0) {
+        dt1 = `${y}年${m}月${d}日`;
+      } else {
+        dt1 = `${y}${sep1}${String(m).padStart(2, '0')}${sep1}${String(d).padStart(2, '0')}`;
+      }
+      dt2 = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(d + 5, 28)).padStart(2, '0')}`;
+      csvLines.push(`${id},商品${idx},${cat},${dt1},${dt2},${price},${qty},${price * qty},${status},备注${idx}`);
+      idx++;
+    }
+  }
+  fs.writeFileSync(auditCsv10, csvLines.join('\n'), 'utf-8');
+
+  fs.writeFileSync(auditRules10, `
+fields:
+  id:
+    required: true
+    type: string
+    pattern: '^R\\d{3}$'
+  name:
+    required: true
+    type: string
+    trim: true
+  status:
+    required: true
+    type: enum
+    enum:
+      - active
+      - inactive
+      - pending
+`, 'utf-8');
+
+  const auditor10 = new RuleAuditor(auditCsv10, auditRules10);
+  const report10 = await auditor10.audit();
+
+  assert(report10.coverage.totalFields === 10, '检测到10个CSV字段 (实际=' + report10.coverage.totalFields + ')');
+  assert(report10.coverage.coveredFields === 3, '规则覆盖3个字段 (实际=' + report10.coverage.coveredFields + ')');
+  assert(report10.coverage.uncoveredFields === 7, '未覆盖7个字段 (实际=' + report10.coverage.uncoveredFields + ')');
+  assert(report10.coverage.coverageRate === 0.3, '覆盖率0.3 (实际=' + report10.coverage.coverageRate + ')');
+  assert(report10.coverage.uncoveredFieldNames.includes('category'), '未覆盖字段包含category');
+  assert(report10.coverage.uncoveredFieldNames.includes('price'), '未覆盖字段包含price');
+  assert(report10.coverage.uncoveredFieldNames.includes('created_at'), '未覆盖字段包含created_at');
+  assert(report10.coverage.uncoveredFieldNames.includes('updated_at'), '未覆盖字段包含updated_at');
+  assert(report10.coverage.uncoveredFieldNames.includes('quantity'), '未覆盖字段包含quantity');
+  assert(report10.coverage.uncoveredFieldNames.includes('total'), '未覆盖字段包含total');
+  assert(report10.coverage.uncoveredFieldNames.includes('remark'), '未覆盖字段包含remark');
+
+  const unconstrained = report10.unconstrainedFields;
+  assert(unconstrained.length >= 7, 'unconstrainedFields 返回7条 (实际=' + unconstrained.length + ')');
+
+  const categoryField = unconstrained.find(f => f.field === 'category');
+  assert(categoryField !== undefined, '检测到category字段无约束');
+  assert(categoryField.inferredType === 'enum' || categoryField.inferredType === 'string', 'category推断类型正确 (实际=' + categoryField.inferredType + ')');
+  assert(categoryField.sampleValues.length > 0, 'category包含样例行');
+  assert(categoryField.sampleValues[0].lineNum !== undefined, '样例行包含行号');
+
+  console.log('');
+
+  // ================================================================
+  // Test 11: 规则审计 - 枚举候选发现
+  // ================================================================
+  console.log('Test 11: 规则审计 - 枚举候选发现');
+
+  assert(report10.enumCandidates.length >= 1, '检测到至少1个枚举候选(实际=' + report10.enumCandidates.length + ')');
+  const enumCat = report10.enumCandidates.find(e => e.field === 'category');
+  assert(enumCat !== undefined, 'category字段被识别为枚举候选');
+  assert(enumCat.confidence > 0.5, '枚举候选置信度>0.5');
+  assert(enumCat.candidateValues.length >= 3, 'category至少3个候选值');
+  assert(enumCat.sampleRows && enumCat.sampleRows.length > 0, '枚举候选包含样例行');
+  assert(enumCat.valueDistribution && enumCat.valueDistribution.length > 0, '枚举候选包含值分布');
+
+  console.log('');
+
+  // ================================================================
+  // Test 12: 规则审计 - 日期格式建议
+  // ================================================================
+  console.log('Test 12: 规则审计 - 日期格式混用分析');
+
+  assert(report10.dateFormatIssues.length >= 2, '检测到至少2个日期格式问题(实际=' + report10.dateFormatIssues.length + ')');
+
+  const createdAtIssue = report10.dateFormatIssues.find(d => d.field === 'created_at');
+  assert(createdAtIssue !== undefined, 'created_at被识别为日期字段');
+  assert(createdAtIssue.mixedCount > 1, 'created_at格式数>1(实际=' + createdAtIssue.mixedCount + ')');
+  assert(createdAtIssue.detectedFormats.length >= 2, 'created_at检测到至少2种格式');
+  assert(createdAtIssue.sampleRows.length > 0, '日期格式问题包含样例行');
+
+  const updatedAtIssue = report10.dateFormatIssues.find(d => d.field === 'updated_at');
+  assert(updatedAtIssue !== undefined, 'updated_at被识别为日期字段');
+  assert(updatedAtIssue.isDateField === false, 'updated_at当前未配置为日期类型');
+
+  const dateTypeSuggestions = report10.suggestions.filter(s =>
+    s.category === 'date_field_suggestion' || s.category === 'date_format_mixed'
+  );
+  assert(dateTypeSuggestions.length >= 1, '至少1条日期相关建议(实际=' + dateTypeSuggestions.length + ')');
+  assert(dateTypeSuggestions[0].yamlSnippet.includes('date'), '日期建议YAML包含type: date');
+  assert(dateTypeSuggestions[0].evidence.sampleRows && dateTypeSuggestions[0].evidence.sampleRows.length > 0, '日期建议包含样例行');
+
+  console.log('');
+
+  // ================================================================
+  // Test 13: 规则审计 - 唯一键候选识别
+  // ================================================================
+  console.log('Test 13: 规则审计 - 唯一键候选识别');
+
+  const ukCandidates = report10.uniqueKeyRisks.filter(r => r.type === 'unique_key_candidate');
+  assert(ukCandidates.length >= 1, '检测到至少1个唯一键候选(实际=' + ukCandidates.length + ')');
+  const idUk = ukCandidates.find(r => r.keyFields.includes('id'));
+  assert(idUk !== undefined, 'id字段被识别为唯一键候选');
+  assert(idUk.confidence > 0.7, '唯一键候选置信度>0.7(实际=' + idUk.confidence + ')');
+  assert(idUk.uniqueRatio > 0.9, '唯一值比例>0.9(实际=' + idUk.uniqueRatio + ')');
+
+  const ukSuggestion = report10.suggestions.find(s => s.category === 'unique_key_candidate');
+  assert(ukSuggestion !== undefined, '生成唯一键建议');
+  assert(ukSuggestion.yamlSnippet.includes('uniqueKeys'), '唯一键建议YAML包含uniqueKeys');
+  assert(ukSuggestion.evidence.sampleRows !== undefined, '唯一键建议包含证据');
+
+  console.log('');
+
+  // ================================================================
+  // Test 14: 规则审计 - 跨字段规则风险提示
+  // ================================================================
+  console.log('Test 14: 规则审计 - 跨字段规则发现（created_at <= updated_at & total=price*quantity）');
+
+  const crossFieldSuggestions = report10.suggestions.filter(s => s.category === 'cross_field_suggestion');
+  assert(crossFieldSuggestions.length >= 1, '至少1条跨字段建议(实际=' + crossFieldSuggestions.length + ')');
+
+  const datePairSuggestion = crossFieldSuggestions.find(s =>
+    s.yamlSnippet && s.yamlSnippet.includes('compare') &&
+    (s.yamlSnippet.includes('created_at') || s.yamlSnippet.includes('updated_at'))
+  );
+  assert(datePairSuggestion !== undefined, '检测到日期对跨字段建议(created_at <= updated_at)');
+  assert(datePairSuggestion.confidence > 0.6, '跨字段建议置信度>0.6');
+  assert(datePairSuggestion.evidence && datePairSuggestion.evidence.sampleRows !== undefined, '跨字段建议包含样例行');
+
+  const productSuggestion = crossFieldSuggestions.find(s =>
+    s.yamlSnippet && s.yamlSnippet.includes('expression') &&
+    s.yamlSnippet.includes('total')
+  );
+  assert(productSuggestion !== undefined || crossFieldSuggestions.some(s => s.description.includes('×')) || crossFieldSuggestions.some(s => s.description.includes('total')), '检测到 total=price*quantity 表达式建议');
+
+  console.log('');
+
+  // ================================================================
+  // Test 15: 规则审计 - 建议置信度与YAML片段有效性
+  // ================================================================
+  console.log('Test 15: 规则审计 - 建议置信度/YAML片段/样例行完整');
+
+  assert(report10.suggestions.length >= 5, '至少5条修复建议(实际=' + report10.suggestions.length + ')');
+  for (const s of report10.suggestions) {
+    assert(typeof s.id === 'string' && s.id.length > 0, '建议有id: ' + s.id);
+    assert(typeof s.title !== undefined && s.title.length > 0, '建议' + s.id + '有title');
+    assert(typeof s.confidence === 'number' && s.confidence >= 0 && s.confidence <= 1, '建议' + s.id + '置信度在0-1之间');
+    assert(['high', 'medium', 'low'].includes(s.confidenceLabel), '建议' + s.id + '置信度标签有效');
+    assert(typeof s.yamlSnippet && s.yamlSnippet.length > 0, '建议' + s.id + '有YAML片段');
+    assert(s.evidence !== undefined, '建议' + s.id + '有evidence');
+    const parsed = yaml.parse(s.yamlSnippet);
+    assert(parsed !== null && typeof parsed === 'object', '建议' + s.id + ' YAML可解析');
+  }
+
+  const unconstrainedSuggestion = report10.suggestions.find(s => s.category === 'unconstrained_field');
+  assert(unconstrainedSuggestion !== undefined, '存在未约束字段建议');
+  assert(unconstrainedSuggestion.evidence.sampleRows && unconstrainedSuggestion.evidence.sampleRows.length > 0, '未约束字段建议包含样例行');
+  assert(unconstrainedSuggestion.evidence.sampleRows[0].lineNum !== undefined, '样例行包含行号');
+  assert(unconstrainedSuggestion.evidence.sampleRows[0].value !== undefined, '样例行包含值');
+
+  console.log('');
+
+  // ================================================================
+  // Test 16: 规则审计 - 报告导出 (Markdown + JSON)
+  // ================================================================
+  console.log('Test 16: 规则审计 - Markdown/JSON报告导出');
+
+  const mdPath = path.join(tmpDir10, 'audit-report.md');
+  const jsonPath = path.join(tmpDir10, 'audit-report.json');
+
+  RuleAuditor.writeMarkdownReport(report10, mdPath);
+  RuleAuditor.writeJsonReport(report10, jsonPath);
+
+  assert(fs.existsSync(mdPath), 'Markdown报告文件已生成');
+  assert(fs.existsSync(jsonPath), 'JSON报告文件已生成');
+
+  const mdContent = fs.readFileSync(mdPath, 'utf-8');
+  assert(mdContent.includes('# CSV 规则审计报告'), 'Markdown包含标题');
+  assert(mdContent.includes('规则覆盖率'), 'Markdown包含覆盖率章节');
+  assert(mdContent.includes('修复建议'), 'Markdown包含修复建议章节');
+  assert(mdContent.includes('```yaml'), 'Markdown包含YAML代码块');
+
+  const jsonContent = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+  assert(jsonContent.coverage !== undefined, 'JSON包含coverage');
+  assert(jsonContent.suggestions && jsonContent.suggestions.length > 0, 'JSON包含suggestions');
+  assert(jsonContent.unconstrainedFields && jsonContent.unconstrainedFields.length > 0, 'JSON包含unconstrainedFields');
+  assert(jsonContent.enumCandidates !== undefined, 'JSON包含enumCandidates');
+  assert(jsonContent.dateFormatIssues !== undefined, 'JSON包含dateFormatIssues');
+  assert(jsonContent.uniqueKeyRisks !== undefined, 'JSON包含uniqueKeyRisks');
+  assert(jsonContent.crossFieldRuleHits !== undefined, 'JSON包含crossFieldRuleHits');
+
+  console.log('');
+
+  // ================================================================
+  // Test 17: 规则审计 - 真实数据集审计（与现有规则数据冲突检测）
+  // ================================================================
+  console.log('Test 17: 规则审计 - 真实数据集customers规则-数据冲突检测');
+
+  const custAuditCsv = path.join(__dirname, 'samples', 'customers.csv');
+  const custAuditRules = path.join(__dirname, 'samples', 'customers.rules.yaml');
+  const auditor17 = new RuleAuditor(custAuditCsv, custAuditRules);
+  const report17 = await auditor17.audit();
+
+  assert(report17.coverage.coverageRate > 0.8, 'customers规则覆盖率>0.8');
+  assert(report17.ruleDataConflicts.length >= 1, '检测到至少1条规则数据冲突(实际=' + report17.ruleDataConflicts.length + ')');
+
+  const enumConflict = report17.ruleDataConflicts.find(c => c.type === 'enum_out_of_range');
+  assert(enumConflict !== undefined, '检测到枚举值超范围冲突');
+  assert(enumConflict.violationCount > 0, '枚举冲突有违反数');
+  assert(enumConflict.sampleRows.length > 0, '枚举冲突有样例行');
+
+  assert(report17.uniqueKeyRisks.length >= 1, 'customers检测到唯一键重复风险');
 
   console.log('');
 

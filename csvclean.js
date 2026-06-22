@@ -10,6 +10,7 @@ const { QualityChecker } = require('./lib/qualityChecker');
 const RuleEngine = require('./lib/ruleEngine');
 const DataCleaner = require('./lib/dataCleaner');
 const { printConsoleReport, writeReport } = require('./lib/reporter');
+const RuleAuditor = require('./lib/ruleAuditor');
 
 const program = new Command();
 
@@ -232,6 +233,73 @@ program
       console.log(chalk.green(`✓ 输出文件: ${result.output}`));
     } catch (err) {
       console.error(chalk.red('合并失败:'), err.message);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('audit-rules <csvFile>')
+  .description('审计CSV规则覆盖率，生成修复建议和YAML片段')
+  .option('-u, --rules <rulesFile>', 'YAML规则文件路径', 'rules.yaml')
+  .option('-m, --markdown <path>', '输出 Markdown 审计报告路径')
+  .option('-j, --json <path>', '输出 JSON 审计报告路径')
+  .option('-q, --quiet', '不打印控制台摘要')
+  .action(async (csvFile, options) => {
+    try {
+      if (!fs.existsSync(csvFile)) {
+        console.error(chalk.red(`文件不存在: ${csvFile}`));
+        process.exit(1);
+      }
+      if (!fs.existsSync(options.rules)) {
+        console.error(chalk.red(`规则文件不存在: ${options.rules}`));
+        process.exit(1);
+      }
+
+      console.log(chalk.cyan(`正在审计: ${csvFile}`));
+      console.log(chalk.cyan(`使用规则: ${options.rules}`));
+
+      const auditor = new RuleAuditor(csvFile, options.rules);
+      const report = await auditor.audit();
+
+      if (!options.quiet) {
+        console.log(chalk.bold('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'));
+        console.log(chalk.bold('          规则审计摘要'));
+        console.log(chalk.bold('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'));
+        console.log(`📊 字段覆盖率: ${chalk.green((report.coverage.coverageRate * 100).toFixed(1) + '%')} (${report.coverage.coveredFields}/${report.coverage.totalFields})`);
+        console.log(`🔍 未约束字段: ${chalk.yellow(report.coverage.uncoveredFields)} 个`);
+        if (report.coverage.uncoveredFields.length > 0) {
+          console.log(`   → ${report.coverage.uncoveredFieldNames.join(', ')}`);
+        }
+        console.log(`⚠️  规则数据冲突: ${chalk.red(report.ruleDataConflicts.length)} 项`);
+        console.log(`🎯 枚举候选: ${report.enumCandidates.length} 个`);
+        console.log(`📅 日期格式问题: ${report.dateFormatIssues.length} 个`);
+        console.log(`🔑 唯一键风险/候选: ${report.uniqueKeyRisks.length} 个`);
+        console.log(`🔗 跨字段规则命中/建议: ${report.crossFieldRuleHits.length} 个`);
+        console.log(`💡 修复建议总数: ${chalk.cyan(report.suggestions.length)} 条`);
+
+        if (report.suggestions.length > 0) {
+          console.log(chalk.bold('\n📋 修复建议 Top 5 (按置信度):'));
+          const top5 = report.suggestions.slice(0, 5);
+          for (let i = 0; i < top5.length; i++) {
+            const s = top5[i];
+            const confColor = s.confidenceLabel === 'high' ? chalk.red : s.confidenceLabel === 'medium' ? chalk.yellow : chalk.blue;
+            console.log(`  ${i + 1}. ${confColor('[' + s.confidenceLabel.toUpperCase() + ']')} ${s.title}`);
+            console.log(`     ${s.description}`);
+          }
+        }
+      }
+
+      if (options.markdown) {
+        RuleAuditor.writeMarkdownReport(report, options.markdown);
+        console.log(chalk.green(`\n✓ Markdown 报告已保存: ${options.markdown}`));
+      }
+      if (options.json) {
+        RuleAuditor.writeJsonReport(report, options.json);
+        console.log(chalk.green(`✓ JSON 报告已保存: ${options.json}`));
+      }
+    } catch (err) {
+      console.error(chalk.red('审计失败:'), err.message);
+      console.error(err.stack);
       process.exit(1);
     }
   });
